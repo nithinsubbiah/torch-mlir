@@ -2949,6 +2949,37 @@ public:
 };
 } // namespace
 
+namespace {
+class ConvertAtenNumelOp : public OpConversionPattern<AtenNumelOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(AtenNumelOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (failed(verifyLinalgCompatibleTypes(op, rewriter)))
+      return failure();
+    Location loc = op.getLoc();
+    Value self = adaptor.self();
+    unsigned tensorRank = self.getType().cast<RankedTensorType>().getRank();
+    // If the input tensor is a zero-ranked tensor.
+    if (tensorRank == 0)
+      rewriter.replaceOpWithNewOp<arith::ConstantOp>(
+          op, rewriter.getI64IntegerAttr(1));
+    else {
+      // If the input tensor rank is a non-zero ranked tensor.
+      SmallVector<Value> sizes(getTensorSizes(rewriter, loc, self));
+      Value productResult =
+          rewriter.create<arith::ConstantOp>(loc, rewriter.getIndexAttr(1));
+      for (int i = 0; i < sizes.size(); i++)
+        productResult =
+            rewriter.create<arith::MulIOp>(loc, productResult, sizes[i]);
+      rewriter.replaceOp(op, castIndexToInt(rewriter, loc, productResult));
+    }
+    return success();
+  }
+};
+} // namespace
+
 // -----------------------------------------------------------------------------
 // The pass
 // -----------------------------------------------------------------------------
@@ -3035,6 +3066,8 @@ public:
     patterns.add<ConvertAtenIntTensorOp>(typeConverter, context);
     target.addIllegalOp<PrimNumToTensorScalarOp>();
     patterns.add<ConvertPrimNumToTensorScalarOp>(typeConverter, context);
+    target.addIllegalOp<AtenNumelOp>();
+    patterns.add<ConvertAtenNumelOp>(typeConverter, context);
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))

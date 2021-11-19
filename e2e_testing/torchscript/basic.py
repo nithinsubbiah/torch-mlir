@@ -738,3 +738,56 @@ class AddCDivModule(torch.nn.Module):
 @register_test_case(module_factory=lambda: AddCDivModule())
 def AddCDivModule_basic(module, tu: TestUtils):
     module.forward(tu.rand(1,3), tu.rand(1,3), tu.rand(1,3))
+
+class MeanModule(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    @export
+    @annotate_args([
+        None,
+        ([3, 4], torch.float32, True),
+    ])
+
+    def forward(self, x):
+        return torch.mean(x)
+
+
+@register_test_case(module_factory=lambda: MeanModule())
+def MeanModule_basic(module, tu: TestUtils):
+    module.forward(torch.randn(3, 4))
+
+class MeanDynamicSizesModule(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    @export
+    @annotate_args([
+        None,
+        ([-1, -1], torch.float32, True),
+    ])
+
+    def forward(self, x):
+        return torch.mean(x)
+
+
+@register_test_case(module_factory=lambda: MeanDynamicSizesModule())
+def MeanDynamicSizesModule_basic(module, tu: TestUtils):
+    module.forward(torch.randn(3, 4))
+
+class NumelModule(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    @export
+    @annotate_args([
+        None,
+        ([-1, -1, -1], torch.float32, True),
+    ])
+
+    def forward(self, input):
+        return torch.numel(input)
+
+@register_test_case(module_factory=lambda: NumelModule())
+def NumelModule_basic(module, tu: TestUtils):
+    module.forward(tu.rand(4, 3, 5))
