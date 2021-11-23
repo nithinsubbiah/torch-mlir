@@ -1392,6 +1392,21 @@ def Torch_AtenSqrtOp : Torch_Op<"aten.sqrt", [
   let assemblyFormat = "$self attr-dict `:` type($self) `->` type($result)";
 }
 
+def Torch_AtenBitwiseAndTensorOp : Torch_Op<"aten.bitwise_and.Tensor", [
+    AllowsTypeRefinement,
+    HasValueSemantics
+  ]> {
+  let summary = "Generated op for `aten::bitwise_and.Tensor : (Tensor, Tensor) -> (Tensor)`";
+  let arguments = (ins
+    AnyTorchTensorType:$self,
+    AnyTorchTensorType:$other
+  );
+  let results = (outs
+    AnyTorchTensorType:$result
+  );
+  let assemblyFormat = "$self `,` $other attr-dict `:` type($self) `,` type($other) `->` type($result)";
+}
+
 def Torch_AtenUnsqueezeOp : Torch_Op<"aten.unsqueeze", [
     AllowsTypeRefinement
   ]> {

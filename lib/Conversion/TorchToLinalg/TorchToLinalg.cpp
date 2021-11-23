@@ -1358,6 +1358,25 @@ static Value createLinalgPayloadCalculationForElementwiseOp(
     return b.create<math::SqrtOp>(loc, payloadArgs[0]);
   if (isa<AtenRsqrtOp>(op))
     return b.create<math::RsqrtOp>(loc, payloadArgs[0]);
+  if (auto bitwiseAnd = dyn_cast<AtenBitwiseAndTensorOp>(op)) {
+    if (bitwiseAnd.getType()
+            .cast<ValueTensorType>()
+            .getDtype()
+            .isa<mlir::FloatType>()) {
+      bitwiseAnd.emitError("Bitwise_And does not support floating point dtype");
+      return nullptr;
+    }
+    Type selfDtype =
+        bitwiseAnd.self().getType().cast<ValueTensorType>().getDtype();
+    Type otherDtype =
+        bitwiseAnd.other().getType().cast<ValueTensorType>().getDtype();
+    if (selfDtype != otherDtype) {
+      bitwiseAnd.emitError(
+          "Bitwise_And expects both operands to be of the same type");
+      return nullptr;
+    }
+    return b.create<arith::AndIOp>(loc, payloadArgs[0], payloadArgs[1]);
+  }
   if (isa<AtenLog2Op>(op))
     return b.create<math::Log2Op>(loc, payloadArgs[0]);
   if (isa<AtenSigmoidOp>(op)) {
@@ -1817,8 +1836,8 @@ struct ConvertElementwiseOp : ConversionPattern {
              AtenLerpTensorOp, AtenSigmoidOp, AtenExpOp, AtenMinimumOp,
              AtenMaximumOp, AtenToDtypeOp, AtenClampOp, AtenRsubScalarOp,
              AtenMulScalarOp, AtenLogOp, AtenSqrtOp, AtenFloorOp,
-             AtenPowTensorScalarOp, AtenLog2Op, AtenRsqrtOp, AtenDivScalarOp>(
-            op))
+             AtenPowTensorScalarOp, AtenLog2Op, AtenRsqrtOp, AtenDivScalarOp,
+             AtenBitwiseAndTensorOp>(op))
       return rewriter.notifyMatchFailure(op, "not a supported elementwise op");
 
     if (failed(verifyLinalgCompatibleTypes(op, rewriter)))
@@ -2968,12 +2987,13 @@ public:
     patterns.add<ConvertAtenLinearOp>(typeConverter, context);
     target.addIllegalOp<AtenBatchNormOp>();
     patterns.add<ConvertAtenBatchNormOp>(typeConverter, context);
-    target.addIllegalOp<
-        AtenTanhOp, AtenReluOp, AtenGeluOp, AtenGeluBackwardOp, AtenAddTensorOp,
-        AtenMulTensorOp, AtenDivTensorOp, AtenSubTensorOp, AtenLerpTensorOp,
-        AtenSigmoidOp, AtenMinimumOp, AtenMaximumOp, AtenToDtypeOp, AtenClampOp,
-        AtenRsubScalarOp, AtenLogOp, AtenSqrtOp, AtenFloorOp,
-        AtenPowTensorScalarOp, AtenLog2Op, AtenRsqrtOp>();
+    target.addIllegalOp<AtenTanhOp, AtenReluOp, AtenGeluOp, AtenGeluBackwardOp,
+                        AtenAddTensorOp, AtenMulTensorOp, AtenDivTensorOp,
+                        AtenSubTensorOp, AtenLerpTensorOp, AtenSigmoidOp,
+                        AtenMinimumOp, AtenMaximumOp, AtenToDtypeOp,
+                        AtenClampOp, AtenRsubScalarOp, AtenLogOp, AtenSqrtOp,
+                        AtenFloorOp, AtenPowTensorScalarOp, AtenLog2Op,
+                        AtenRsqrtOp, AtenBitwiseAndTensorOp>();
     patterns.add<ConvertElementwiseOp>(typeConverter, context);
     target.addIllegalOp<AtenUnsqueezeOp>();
     patterns.add<ConvertAtenUnsqueezeOp>(typeConverter, context);
