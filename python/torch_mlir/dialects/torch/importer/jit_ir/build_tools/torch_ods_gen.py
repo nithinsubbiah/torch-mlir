@@ -599,6 +599,13 @@ def emit_ops(emitter_td: TextEmitter, registry: Registry):
 
     emit("_torch_mlir_custom_op_example::identity : (Tensor) -> (Tensor)")
 
+    # ==========================================================================
+    # `qtorch_ops::` namespace.
+    #
+    # This is a demonstration of supporting an operation defined in QPyTorch.
+    # ==========================================================================
+
+    emit("qtorch_ops::block_quantize_nearest : (Tensor, int, int) -> (Tensor)")
 
 def dump_registered_ops(outfile: TextIO, registry: Registry):
     for _, v in sorted(registry.by_unique_key.items()):

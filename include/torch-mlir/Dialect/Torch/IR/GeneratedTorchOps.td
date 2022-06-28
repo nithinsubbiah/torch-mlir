@@ -8339,3 +8339,28 @@ def Torch_TorchMlirCustomOpExampleIdentityOp : Torch_Op<"_torch_mlir_custom_op_e
   }];
 }
 
+def Torch_QtorchOpsBlockQuantizeNearestOp : Torch_Op<"qtorch_ops.block_quantize_nearest", [
+    AllowsTypeRefinement,
+    HasValueSemantics,
+    ReadOnly
+  ]> {
+  let summary = "Generated op for `qtorch_ops::block_quantize_nearest : (Tensor, int, int) -> (Tensor)`";
+  let arguments = (ins
+    AnyTorchTensorType:$t,
+    Torch_IntType:$wl,
+    Torch_IntType:$dim
+  );
+  let results = (outs
+    AnyTorchTensorType:$result
+  );
+  let hasCustomAssemblyFormat = 1;
+  let extraClassDefinition = [{
+    ParseResult QtorchOpsBlockQuantizeNearestOp::parse(OpAsmParser &parser, OperationState &result) {
+      return parseDefaultTorchOp(parser, result, 3, 1);
+    }
+    void QtorchOpsBlockQuantizeNearestOp::print(OpAsmPrinter &printer) {
+      printDefaultTorchOp(printer, *this, 3, 1);
+    }
+  }];
+}
+

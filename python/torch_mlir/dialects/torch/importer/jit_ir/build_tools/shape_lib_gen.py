@@ -1037,6 +1037,9 @@ def aten〇linalg_vector_norm(self: List[int], ord: float = 2, dim: Optional[Lis
 def _torch_mlir_custom_op_example〇identity(t: List[int]) -> List[int]:
     return upstream_shape_functions.unary(t)
 
+def qtorch_ops〇block_quantize_nearest(t: List[int], wl: int, dim: int) -> List[int]:
+    return upstream_shape_functions.unary(t)
+
 # ==============================================================================
 # Shape library generator main().
 # ==============================================================================

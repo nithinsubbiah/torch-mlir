@@ -2605,6 +2605,47 @@ LogicalResult ConvertAtenOp<AtenGeluBackwardOp>::matchAndRewrite(
   return success();
 }
 
+// This defines a template to construct qtorch ops conversion.
+template <typename QtorchOp>
+class ConvertQtorchOp : public OpConversionPattern<QtorchOp> {
+public:
+  using OpConversionPattern<QtorchOp>::OpConversionPattern;
+  using OpAdaptor = typename QtorchOp::Adaptor;
+  LogicalResult
+  matchAndRewrite(QtorchOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override;
+};
+
+template <>
+LogicalResult ConvertQtorchOp<QtorchOpsBlockQuantizeNearestOp>::matchAndRewrite(
+    QtorchOpsBlockQuantizeNearestOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter &rewriter) const {
+
+  // auto selfType = op.t().getType().dyn_cast<TensorType>();
+  // if (!selfType)
+  //   return op.emitError("Only tensor types are supported");
+  
+  // Only statically resolvable values are currently supported
+  int64_t wl, dim;
+  if (!matchPattern(op.wl(), m_TorchConstantInt(&wl)))
+    return op->emitError("wl must be a Scalar constant");
+
+  if (!matchPattern(op.dim(), m_TorchConstantInt(&dim)))
+    return op->emitError("dim must be a Scalar constant");
+
+  auto wlTensor = tosa::getConstTensor<int32_t>(
+      rewriter, op.getOperation(), wl, {1});
+  auto dimTensor = tosa::getConstTensor<int32_t>(
+      rewriter, op.getOperation(), dim, {1});
+  SmallVector<Value,3> inputOperands{adaptor.t(), wlTensor.getValue(), dimTensor.getValue()};
+  
+  rewriter.replaceOpWithNewOp<tosa::CustomOp>(
+      op, getTypeConverter()->convertType(op.t().getType()),
+      rewriter.getStringAttr("qtorch_blockquantizenearest"), inputOperands);
+
+  return success();
+}
+
 template <typename AtenOpT, typename TosaOpT>
 class ConvertAtenPoolingBaseOp : public OpConversionPattern<AtenOpT> {
 public:
@@ -3214,6 +3255,9 @@ patterns.add<ConvertAtenAvgPool2dOp>(typeConverter, context);
     INSERT_ATENOP_PATTERN(AtenGeluOp);
     INSERT_ATENOP_PATTERN(AtenGeluBackwardOp);
 #undef INSERT_ATENOP_PATTERN
+
+    target.addIllegalOp<QtorchOpsBlockQuantizeNearestOp>();                                               \
+    patterns.add<ConvertQtorchOp<QtorchOpsBlockQuantizeNearestOp>>(typeConverter, context);
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
