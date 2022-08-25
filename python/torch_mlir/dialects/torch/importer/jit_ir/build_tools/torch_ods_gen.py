@@ -645,6 +645,16 @@ def emit_ops(emitter_td: TextEmitter, registry: Registry):
         "quantized::linear : (Tensor, __torch__.torch.classes.quantized.LinearPackedParamsBase, float, int) -> (Tensor)",
         traits=["HasValueSemantics"])
 
+    # ==========================================================================
+    # `qtorch_ops::` namespace.
+    #
+    # This is a demonstration of supporting an operation defined in QPyTorch.
+    # ==========================================================================
+
+    emit("qtorch_ops::block_quantize_nearest : (Tensor, int, int) -> (Tensor)")
+    emit("qtorch_ops::fixed_point_quantize_nearest : (Tensor, int, int, bool, bool) -> (Tensor)")
+    emit("qtorch_ops::float_quantize_nearest : (Tensor, int, int) -> (Tensor)")
+
 
 def dump_registered_ops(outfile: TextIO, registry: Registry):
     for _, v in sorted(registry.by_unique_key.items()):

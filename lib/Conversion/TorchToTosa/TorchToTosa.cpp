@@ -2523,6 +2523,119 @@ LogicalResult ConvertAtenOp<AtenViewOp>::matchAndRewrite(
   rewriter.replaceOpWithNewOp<tosa::ReshapeOp>(
       op, getTypeConverter()->convertType(op.getType()), adaptor.self(),
       rewriter.getI64ArrayAttr(outShape));
+ 
+  return success();
+}
+// This defines a template to construct qtorch ops conversion.
+template <typename QtorchOp>
+class ConvertQtorchOp : public OpConversionPattern<QtorchOp> {
+public:
+  using OpConversionPattern<QtorchOp>::OpConversionPattern;
+  using OpAdaptor = typename QtorchOp::Adaptor;
+  LogicalResult
+  matchAndRewrite(QtorchOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override;
+};
+
+template <>
+LogicalResult ConvertQtorchOp<QtorchOpsBlockQuantizeNearestOp>::matchAndRewrite(
+    QtorchOpsBlockQuantizeNearestOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter &rewriter) const {
+
+  // auto selfType = op.t().getType().dyn_cast<TensorType>();
+  // if (!selfType)
+  //   return op.emitError("Only tensor types are supported");
+  
+  // Only statically resolvable values are currently supported
+  int64_t wl, dim;
+  if (!matchPattern(op.wl(), m_TorchConstantInt(&wl)))
+    return op->emitError("wl must be a Scalar constant");
+
+  if (!matchPattern(op.dim(), m_TorchConstantInt(&dim)))
+    return op->emitError("dim must be a Scalar constant");
+
+  auto wlTensor = tosa::getConstTensor<int32_t>(
+      rewriter, op.getOperation(), wl, {1});
+  auto dimTensor = tosa::getConstTensor<int32_t>(
+      rewriter, op.getOperation(), dim, {1});
+  SmallVector<Value,3> inputOperands{adaptor.t(), wlTensor.value(), dimTensor.value()};
+  
+  rewriter.replaceOpWithNewOp<tosa::CustomOp>(
+      op, getTypeConverter()->convertType(op.t().getType()),
+      rewriter.getStringAttr("qtorch_blockquantizenearest"), inputOperands);
+
+  return success();
+}
+
+template <>
+LogicalResult ConvertQtorchOp<QtorchOpsFloatQuantizeNearestOp>::matchAndRewrite(
+    QtorchOpsFloatQuantizeNearestOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter &rewriter) const {
+
+  // auto selfType = op.t().getType().dyn_cast<TensorType>();
+  // if (!selfType)
+  //   return op.emitError("Only tensor types are supported");
+  
+  // Only statically resolvable values are currently supported
+  int64_t man_bits, exp_bits;
+  if (!matchPattern(op.man_bits(), m_TorchConstantInt(&man_bits)))
+    return op->emitError("wl must be a Scalar constant");
+
+  if (!matchPattern(op.exp_bits(), m_TorchConstantInt(&exp_bits)))
+    return op->emitError("dim must be a Scalar constant");
+
+  auto mantissa = tosa::getConstTensor<int32_t>(
+      rewriter, op.getOperation(), man_bits, {1});
+  auto exponent = tosa::getConstTensor<int32_t>(
+      rewriter, op.getOperation(), exp_bits, {1});
+  SmallVector<Value,3> inputOperands{adaptor.t(), mantissa.value(), exponent.value()};
+  
+  rewriter.replaceOpWithNewOp<tosa::CustomOp>(
+      op, getTypeConverter()->convertType(op.t().getType()),
+      rewriter.getStringAttr("qtorch_floatquantizenearest"), inputOperands);
+
+  return success();
+}
+
+template <>
+LogicalResult ConvertQtorchOp<QtorchOpsFixedPointQuantizeNearestOp>::matchAndRewrite(
+    QtorchOpsFixedPointQuantizeNearestOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter &rewriter) const {
+
+  // auto selfType = op.t().getType().dyn_cast<TensorType>();
+  // if (!selfType)
+  //   return op.emitError("Only tensor types are supported");
+  
+  // Only statically resolvable values are currently supported
+  int64_t wl, dim;
+  bool clamp, symmetric;
+
+  if (!matchPattern(op.wl(), m_TorchConstantInt(&wl)))
+    return op->emitError("wl must be a Scalar constant");
+
+  if (!matchPattern(op.dim(), m_TorchConstantInt(&dim)))
+    return op->emitError("dim must be a Scalar constant");
+
+  if (!matchPattern(op.clamp(), m_TorchConstantBool(&clamp)))
+    return op->emitError("dim must be a Scalar constant");
+
+  if (!matchPattern(op.symmetric(), m_TorchConstantBool(&symmetric)))
+    return op->emitError("dim must be a Scalar constant");
+
+  auto wlTensor = tosa::getConstTensor<int32_t>(
+      rewriter, op.getOperation(), wl, {1});
+  auto dimTensor = tosa::getConstTensor<int32_t>(
+      rewriter, op.getOperation(), dim, {1});
+  auto clampVal = tosa::getConstTensor<int32_t>(
+      rewriter, op.getOperation(), clamp, {1});
+  auto symmetricVal = tosa::getConstTensor<int32_t>(
+      rewriter, op.getOperation(), symmetric, {1});
+  SmallVector<Value,5> inputOperands{adaptor.t(), wlTensor.value(), dimTensor.value(),
+    clampVal.value(), symmetricVal.value()};
+  
+  rewriter.replaceOpWithNewOp<tosa::CustomOp>(
+      op, getTypeConverter()->convertType(op.t().getType()),
+      rewriter.getStringAttr("qtorch_fixed_point_quantize_nearest"), inputOperands);
 
   return success();
 }
@@ -3711,6 +3824,13 @@ public:
   patterns.add<ConvertAtenCloneOp<AtenOp>>(typeConverter, context);
     INSERT_CLONE_ATENOP_PATTERN(AtenCloneOp);
 #undef INSERT_CLONE_ATENOP_PATTERN
+
+    target.addIllegalOp<QtorchOpsBlockQuantizeNearestOp>();                                               \
+    patterns.add<ConvertQtorchOp<QtorchOpsBlockQuantizeNearestOp>>(typeConverter, context);
+    target.addIllegalOp<QtorchOpsFloatQuantizeNearestOp>();                                               \
+    patterns.add<ConvertQtorchOp<QtorchOpsFloatQuantizeNearestOp>>(typeConverter, context);
+    target.addIllegalOp<QtorchOpsFixedPointQuantizeNearestOp>();                                               \
+    patterns.add<ConvertQtorchOp<QtorchOpsFixedPointQuantizeNearestOp>>(typeConverter, context);
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))

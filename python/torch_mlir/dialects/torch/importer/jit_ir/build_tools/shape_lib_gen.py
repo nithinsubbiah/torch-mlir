@@ -1195,6 +1195,15 @@ def aten〇linalg_vector_norm(self: List[int], ord: float = 2, dim: Optional[Lis
 def aten〇frobenius_norm〇dim(self: List[int], dim: List[int], keepdim: bool = False) -> List[int]:
     return upstream_shape_functions.sum_mean_dim(self, dim, keepdim, 0)
 
+def qtorch_ops〇block_quantize_nearest(t: List[int], wl: int, dim: int) -> List[int]:
+    return upstream_shape_functions.unary(t)
+
+def qtorch_ops〇fixed_point_quantize_nearest(t: List[int], wl: int, dim: int, clamp: bool, symmetric: bool) -> List[int]:
+    return upstream_shape_functions.unary(t)
+
+def qtorch_ops〇float_quantize_nearest(t: List[int], man_bits: int, exp_bits: int) -> List[int]:
+    return upstream_shape_functions.unary(t)
+
 # ==============================================================================
 # Shape library generator main().
 # ==============================================================================

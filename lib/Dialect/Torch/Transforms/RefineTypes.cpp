@@ -701,7 +701,9 @@ void TypeAnalysis::visitOperation(Operation *op,
           AtenIndexPutHackedTwinOp, AtenMaskedFillScalarOp, AtenFlipOp,
           PrimAbsScalarOp, AtenNumpyTOp, AtenTriuOp, AtenMaskedFillTensorOp,
           AtenRollOp, AtenPowTensorTensorOp, AtenLiftFreshCopyOp,
-          AtenIndexTensorHackedTwinOp>(op)) {
+          AtenIndexTensorHackedTwinOp,
+          QtorchOpsBlockQuantizeNearestOp, QtorchOpsFixedPointQuantizeNearestOp,
+          QtorchOpsFloatQuantizeNearestOp>(op)) {
     return incorporateKnowledge(op->getResult(0), operands[0]->getValue());
   }
 

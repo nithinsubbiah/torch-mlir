@@ -9774,3 +9774,80 @@ def Torch_QuantizedLinearOp : Torch_Op<"quantized.linear", [
   }];
 }
 
+def Torch_QtorchOpsBlockQuantizeNearestOp : Torch_Op<"qtorch_ops.block_quantize_nearest", [
+    AllowsTypeRefinement,
+    HasValueSemantics,
+    ReadOnly
+  ]> {
+  let summary = "Generated op for `qtorch_ops::block_quantize_nearest : (Tensor, int, int) -> (Tensor)`";
+  let arguments = (ins
+    AnyTorchTensorType:$t,
+    Torch_IntType:$wl,
+    Torch_IntType:$dim
+  );
+  let results = (outs
+    AnyTorchTensorType:$result
+  );
+  let hasCustomAssemblyFormat = 1;
+  let extraClassDefinition = [{
+    ParseResult QtorchOpsBlockQuantizeNearestOp::parse(OpAsmParser &parser, OperationState &result) {
+      return parseDefaultTorchOp(parser, result, 3, 1);
+    }
+    void QtorchOpsBlockQuantizeNearestOp::print(OpAsmPrinter &printer) {
+      printDefaultTorchOp(printer, *this, 3, 1);
+    }
+  }];
+}
+
+def Torch_QtorchOpsFixedPointQuantizeNearestOp : Torch_Op<"qtorch_ops.fixed_point_quantize_nearest", [
+    AllowsTypeRefinement,
+    HasValueSemantics,
+    ReadOnly
+  ]> {
+  let summary = "Generated op for `qtorch_ops::fixed_point_quantize_nearest : (Tensor, int, int, bool, bool) -> (Tensor)`";
+  let arguments = (ins
+    AnyTorchTensorType:$t,
+    Torch_IntType:$wl,
+    Torch_IntType:$dim,
+    Torch_BoolType:$clamp,
+    Torch_BoolType:$symmetric
+  );
+  let results = (outs
+    AnyTorchTensorType:$result
+  );
+  let hasCustomAssemblyFormat = 1;
+  let extraClassDefinition = [{
+    ParseResult QtorchOpsFixedPointQuantizeNearestOp::parse(OpAsmParser &parser, OperationState &result) {
+      return parseDefaultTorchOp(parser, result, 5, 1);
+    }
+    void QtorchOpsFixedPointQuantizeNearestOp::print(OpAsmPrinter &printer) {
+      printDefaultTorchOp(printer, *this, 5, 1);
+    }
+  }];
+}
+
+def Torch_QtorchOpsFloatQuantizeNearestOp : Torch_Op<"qtorch_ops.float_quantize_nearest", [
+    AllowsTypeRefinement,
+    HasValueSemantics,
+    ReadOnly
+  ]> {
+  let summary = "Generated op for `qtorch_ops::float_quantize_nearest : (Tensor, int, int) -> (Tensor)`";
+  let arguments = (ins
+    AnyTorchTensorType:$t,
+    Torch_IntType:$man_bits,
+    Torch_IntType:$exp_bits
+  );
+  let results = (outs
+    AnyTorchTensorType:$result
+  );
+  let hasCustomAssemblyFormat = 1;
+  let extraClassDefinition = [{
+    ParseResult QtorchOpsFloatQuantizeNearestOp::parse(OpAsmParser &parser, OperationState &result) {
+      return parseDefaultTorchOp(parser, result, 3, 1);
+    }
+    void QtorchOpsFloatQuantizeNearestOp::print(OpAsmPrinter &printer) {
+      printDefaultTorchOp(printer, *this, 3, 1);
+    }
+  }];
+}
+
