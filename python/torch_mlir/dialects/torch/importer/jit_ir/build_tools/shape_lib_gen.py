@@ -1023,6 +1023,18 @@ def aten〇embedding_bag〇padding_idx(weight: List[int], indices: List[int], of
 def aten〇_embedding_bag(weight: List[int], indices: List[int], offsets: List[int], scale_grad_by_freq: bool = False, mode: int = 0, sparse: bool = False, per_sample_weights: Optional[List[int]] = None, include_last_offset: bool = False, padding_idx: int = -1) -> Tuple[List[int], List[int], List[int], List[int]]:
     return _embedding_bag_helper(weight, indices, offsets, include_last_offset, mode)
 
+def sparse_op〇dense(t: List[int]) -> List[int]:
+    return upstream_shape_functions.unary(t)
+
+def sparse_op〇topk(t: List[int], density: float) -> List[int]:
+    return upstream_shape_functions.unary(t)
+
+def sparse_op〇blocktopk(t: List[int], k: int, block_size: int, block_dim: int) -> List[int]:
+    return upstream_shape_functions.unary(t)
+
+def sparse_op〇bernoulli(t: List[int]) -> List[int]:
+    return upstream_shape_functions.unary(t)
+
 @check_shape_function([
     Invocation(TensorOfShape(2, 3), LongTensorOfShape(2), None, 1, -100), # Basic case.
     Invocation(TensorOfShape(3), LongTensorOfShape(), None, 1, -100), # No batch dim.

@@ -656,6 +656,14 @@ def emit_ops(emitter_td: TextEmitter, registry: Registry):
         "quantized::linear : (Tensor, __torch__.torch.classes.quantized.LinearPackedParamsBase, float, int) -> (Tensor)",
         traits=["HasValueSemantics"])
 
+    # ==========================================================================
+    # `sparse_op::` namespace.
+    # ==========================================================================
+
+    emit("sparse_op::dense : (Tensor) -> (Tensor)")
+    emit("sparse_op::topk : (Tensor, float) -> (Tensor)")
+    emit("sparse_op::blocktopk : (Tensor, int, int, int) -> (Tensor)")
+    emit("sparse_op::bernoulli : (Tensor) -> (Tensor)")
 
 def dump_registered_ops(outfile: TextIO, registry: Registry):
     for _, v in sorted(registry.by_unique_key.items()):

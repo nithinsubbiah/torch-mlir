@@ -23,6 +23,9 @@
 #include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h"
 #include "torch-mlir/Dialect/TorchConversion/Transforms/BackendTypeConversion.h"
 
+#include <numeric>
+#include <random>
+
 using namespace mlir;
 using namespace mlir::torch;
 using namespace mlir::torch::Torch;
@@ -3649,6 +3652,258 @@ public:
   }
 };
 
+// This defines a template to construct ops that creates sparse tensors.
+template <typename SparsifyOp>
+class ConvertSparsifyOp : public OpConversionPattern<SparsifyOp> {
+public:
+  using OpConversionPattern<SparsifyOp>::OpConversionPattern;
+  using OpAdaptor = typename SparsifyOp::Adaptor;
+  LogicalResult
+  matchAndRewrite(SparsifyOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override;
+};
+
+template <>
+LogicalResult ConvertSparsifyOp<SparseOpDenseOp>::matchAndRewrite(
+    SparseOpDenseOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter &rewriter) const {
+  
+  Value inputVal = adaptor.t();
+  auto inputTy = inputVal.getType().cast<TensorType>();
+  auto inputShape = inputTy.getShape();
+
+  int numberOfElements = 1;
+  for (auto &dim : inputShape) {
+    numberOfElements *= dim;
+  }
+
+  // Create an atrribute with the boolean mask values (i32 type) and
+  // add to the input tensor
+  std::vector<int32_t> mask(numberOfElements, 1);
+  auto maskRef = ArrayRef<int32_t>(mask);
+  auto maskType = RankedTensorType::get(inputShape, rewriter.getIntegerType(32));
+  auto maskValAttr = DenseElementsAttr::get(maskType, maskRef);
+
+  auto constOp = inputVal.getDefiningOp();
+  constOp->setAttr("mask", maskValAttr);
+
+  rewriter.eraseOp(op);
+
+  return success();
+}
+
+template <>
+LogicalResult ConvertSparsifyOp<SparseOpTopkOp>::matchAndRewrite(
+    SparseOpTopkOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter &rewriter) const {
+
+  Value inputVal = adaptor.t();
+  auto inputTy = inputVal.getType().cast<TensorType>();
+  auto inputShape = inputTy.getShape();
+
+  SmallVector<int64_t> shape;
+  for (auto &dim : inputShape) {
+    shape.push_back(dim);
+  }
+
+  double density;
+  if (!matchPattern(op.density(), m_TorchConstantFloat(&density)))
+    return op->emitError("density must be a Scalar constant");
+  
+  auto constOp = inputVal.getDefiningOp();
+  auto attr = constOp->getAttr("value").cast<DenseElementsAttr>();
+  std::vector<float_t> values;
+  for (auto element : attr.getValues<float_t>()) {
+    values.push_back(element);
+  }
+
+  // Perform argsort on input tensor and store indices
+  std::vector<int> indices(values.size());
+  std::iota(indices.begin(), indices.end(), 0);
+  std::sort(indices.begin(), indices.end(),
+            [&values](int left, int right) -> bool {
+                // sort indices according to corresponding array element
+                return values[left] < values[right];
+            });
+
+  // Boolean mask that nullifies the first 'n' smallest values
+  std::vector<int32_t> mask(values.size(), 1);
+  
+  // Calculate 'n' according to the density
+  int numZeroElements = int(attr.getNumElements() * (1 - density));
+  for (int i = 0; i < numZeroElements; i++) {
+    mask[indices[i]] = 0;
+  }
+
+  // Create an atrribute with the boolean mask values (i32 type) and
+  // add to the input tensor
+  auto maskRef = ArrayRef<int32_t>(mask);
+  auto maskType = RankedTensorType::get(inputShape, rewriter.getIntegerType(32));
+  auto maskValAttr = DenseElementsAttr::get(maskType, maskRef);
+  constOp->setAttr("mask", maskValAttr);
+
+  rewriter.eraseOp(op);
+
+  return success();
+}
+
+template <>
+LogicalResult ConvertSparsifyOp<SparseOpBlocktopkOp>::matchAndRewrite(
+    SparseOpBlocktopkOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter &rewriter) const {
+
+  Value inputVal = adaptor.t();
+  auto inputTy = inputVal.getType().cast<TensorType>();
+  auto inputShape = inputTy.getShape();
+  
+  SmallVector<int64_t> shape;
+  for (auto &dim : inputShape) {
+    shape.push_back(dim);
+  }
+
+  if (shape.size() > 2)
+    return op->emitError("Only 2D rank input tensors are currently supported in SparseOpBlocktopkOp");
+
+  int64_t k, blockSize, blockDim;
+  if (!matchPattern(op.k(), m_TorchConstantInt(&k)))
+    return op->emitError("k must be a Scalar constant");
+  
+  if (!matchPattern(op.block_size(), m_TorchConstantInt(&blockSize)))
+    return op->emitError("block_size must be a Scalar constant");
+  
+  if (!matchPattern(op.block_dim(), m_TorchConstantInt(&blockDim)))
+    return op->emitError("block_dim must be a Scalar constant");
+  
+  if ((k < 0) ||  (blockSize < 0))
+    return op->emitError("Block size and k values must be positive");
+
+  if (k > blockSize)
+    return op->emitError("k value must be less than or equal to block size");
+
+  if (blockDim == -1)
+    blockDim = shape.size()-1;
+
+  if ((size_t)blockDim >= shape.size() || blockDim < 0)
+    return op->emitError("block dimension is out of bounds");
+
+  if (shape[blockDim] % blockSize != 0)
+    return op->emitError("Input tensor size along block dimension is not a multiple of block size");
+  
+  auto constOp = inputVal.getDefiningOp();
+  auto attr = constOp->getAttr("value").cast<DenseElementsAttr>();
+  std::vector<float_t> values;
+  for (auto element : attr.getValues<float_t>()) {
+    values.push_back(element);
+  }
+
+  // Tranpose values in the input tensor between blockDim dimension and tensor's
+  // last dimension
+  // Since this op  only supports 2D tensor currently, transpose needs to be done
+  // only when the blockDim = 0
+  std::vector<float_t> inputTransformed;
+  SmallVector<int64_t> transposedShape;
+  if (blockDim == 0) {
+    for (int i = 0; i < shape[1]; i++) {
+      for (int j = 0; j < shape[0]; j++) {
+        inputTransformed.push_back(values[i+(j*shape[1])]);
+      }
+    }
+    transposedShape.push_back(shape[1]);
+    transposedShape.push_back(shape[0]);
+  } else {
+    inputTransformed = values;
+    transposedShape = shape;
+  }
+
+  // Reshape the tensor such that the last dimension size is of blockSize
+  SmallVector<int64_t> blockedShape;
+  blockedShape.push_back(values.size()/blockSize);
+  blockedShape.push_back(blockSize);
+
+  // Boolean mask that gets assigned values according to the sorted row values amongst blocks
+  std::vector<int32_t> mask(values.size(), 1);
+  int numZeroBlocks = blockSize - k; // Number of blocks in each row of mask to set as zero
+  for (int i = 0; i < blockedShape[0]; i++) {
+    std::vector<int> indices(blockSize);
+    std::iota(indices.begin(), indices.end(), 0);
+    std::vector<float_t> blockRow(inputTransformed.begin() + (i*blockSize),  inputTransformed.begin() + ((i+1)*blockSize));
+
+    std::sort(indices.begin(), indices.end(),
+              [&blockRow](int left, int right) -> bool {
+                  // sort indices according to corresponding array element
+                  return blockRow[left] < blockRow[right];
+              });
+
+    for (int j = 0; j < numZeroBlocks; j++) {
+      mask[(i*blockSize) + indices[j]] = 0;
+    }
+  }
+
+  // Transpose the mask if the input has been transposed before i.e. if blockDim = 0
+  std::vector<int32_t> maskTransformed;
+  if (blockDim == 0) {
+    for (int i = 0; i < transposedShape[1]; i++) {
+      for (int j = 0; j < transposedShape[0]; j++) {
+        maskTransformed.push_back(mask[i + (j*transposedShape[1])]);
+      }
+    }
+  } else {
+    maskTransformed = mask;
+  }
+
+  // Create an atrribute with the boolean mask values (i32 type) and
+  // add to the input tensor
+  auto maskRef = ArrayRef<int32_t>(maskTransformed);
+  auto maskType = RankedTensorType::get(inputShape, rewriter.getIntegerType(32));
+  auto maskValAttr = DenseElementsAttr::get(maskType, maskRef);
+  constOp->setAttr("mask", maskValAttr);
+
+  rewriter.eraseOp(op);
+
+  return success();
+}
+
+template <>
+LogicalResult ConvertSparsifyOp<SparseOpBernoulliOp>::matchAndRewrite(
+    SparseOpBernoulliOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter &rewriter) const {
+
+  Value inputVal = adaptor.t();
+  auto inputTy = inputVal.getType().cast<TensorType>();
+  auto inputShape = inputTy.getShape();
+
+  SmallVector<int64_t> shape;
+  for (auto &dim : inputShape) {
+    shape.push_back(dim);
+  }
+
+  auto constOp = inputVal.getDefiningOp();
+  auto attr = constOp->getAttr("value").cast<DenseElementsAttr>();
+  
+  // Boolean mask whose values will be drawn from Bernoulli distribution
+  std::vector<int32_t> mask;
+
+  std::random_device rd{}; 
+  std::mt19937 rng{rd()};
+
+  for (auto element : attr.getValues<float_t>()) {
+    // Each element value is the probability of drawing '1' from the distribution
+    std::bernoulli_distribution d(element);
+    mask.push_back(d(rng));
+  }
+
+  // Create an atrribute with the boolean mask values (i32 type) and
+  // add to the input tensor
+  auto maskRef = ArrayRef<int32_t>(mask);
+  auto maskType = RankedTensorType::get(inputShape, rewriter.getIntegerType(32));
+  auto maskValAttr = DenseElementsAttr::get(maskType, maskRef);
+  constOp->setAttr("mask", maskValAttr);
+
+  rewriter.eraseOp(op);
+
+  return success();
+}
+
 } // namespace
 
 // -----------------------------------------------------------------------------
@@ -3865,6 +4120,15 @@ public:
   patterns.add<ConvertAtenCloneOp<AtenOp>>(typeConverter, context);
     INSERT_CLONE_ATENOP_PATTERN(AtenCloneOp);
 #undef INSERT_CLONE_ATENOP_PATTERN
+
+#define INSERT_SPARSE_OP_PATTERN(SparseOp)                                    \
+  target.addIllegalOp<SparseOp>();                                               \
+  patterns.add<ConvertSparsifyOp<SparseOp>>(typeConverter, context);
+    INSERT_SPARSE_OP_PATTERN(SparseOpDenseOp);
+    INSERT_SPARSE_OP_PATTERN(SparseOpTopkOp);
+    INSERT_SPARSE_OP_PATTERN(SparseOpBlocktopkOp);
+    INSERT_SPARSE_OP_PATTERN(SparseOpBernoulliOp);
+#undef INSERT_SPARSE_OP_PATTERN
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))

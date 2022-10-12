@@ -66,6 +66,12 @@ declare_mlir_dialect_python_bindings(
   DIALECT_NAME torch
 )
 
+declare_mlir_python_sources(TorchMLIRPythonSources.SparseCustomOp
+  ROOT_DIR "${TORCH_MLIR_PYTHON_ROOT_DIR}"
+  ADD_TO_PARENT TorchMLIRPythonSources
+  SOURCES sparse_custom_op/__init__.py
+)
+
 ################################################################################
 # Extensions
 ################################################################################
@@ -113,6 +119,13 @@ add_subdirectory(torch_mlir/eager_mode)
 ################################################################################
 
 # add_subdirectory(torch_mlir/_torch_mlir_custom_op_example)
+
+
+################################################################################
+# Add sparse op as a custom op
+################################################################################
+
+add_subdirectory(torch_mlir/sparse_custom_op)
 
 ################################################################################
 # Generate packages and shared library
@@ -165,5 +178,7 @@ if(TORCH_MLIR_ENABLE_LTC)
   add_dependencies(TorchMLIRPythonModules torch_mlir_ltc_backend)
   add_dependencies(TorchMLIRPythonModules reference_lazy_backend)
 endif()
+
+add_dependencies(TorchMLIRPythonModules sparse_op)
 
 add_subdirectory(test)

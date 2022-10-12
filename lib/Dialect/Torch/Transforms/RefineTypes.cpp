@@ -701,7 +701,9 @@ void TypeAnalysis::visitOperation(Operation *op,
           AtenTriuOp, AtenMaskedFillTensorOp, AtenRollOp, AtenPowTensorTensorOp,
           AtenLiftFreshCopyOp, AtenIndexTensorHackedTwinOp,
           AtenUpsampleNearest2dVecOp, AtenMishOp, AtenRoundOp, AtenFillTensorOp,
-          AtenUpsampleNearest2dBackwardVecOp>(op)) {
+          AtenUpsampleNearest2dBackwardVecOp, SparseOpDenseOp, SparseOpTopkOp,
+          SparseOpBlocktopkOp, SparseOpBernoulliOp>(op)) {
+
     return incorporateKnowledge(op->getResult(0), operands[0]->getValue());
   }
 
