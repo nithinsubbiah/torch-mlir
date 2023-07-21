@@ -1710,6 +1710,50 @@ LogicalResult ConvertAtenOp<AtenFlipOp>::matchAndRewrite(
   return success();
 }
 
+// OperatorOp
+namespace {
+class ConvertOperatorOp
+    : public OpConversionPattern<OperatorOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(OperatorOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    
+    // Input tensor type and shape
+    Value lhs = adaptor.getOperands()[0];
+    auto lhsType = lhs.getType().cast<RankedTensorType>();
+    if (!lhsType) {
+      return failure();
+    }
+
+    std::string shardConfig;
+    if (!matchPattern(adaptor.getOperands()[1],
+                      m_TorchConstantStr(shardConfig)))
+      return rewriter.notifyMatchFailure(
+          op, "only support constant str rounding mode");
+
+
+    // get outputs
+    Type newResultType = getTypeConverter()->convertType(op.getType(0));
+    auto resultType = newResultType.cast<RankedTensorType>();
+    if (!resultType) {
+      return failure();
+    }
+
+    SmallVector<NamedAttribute, 2> attr;
+    auto b = rewriter.getNamedAttr("call_target_name", rewriter.getStringAttr(op.getName().str()));
+    attr.push_back(b);
+    auto c = rewriter.getNamedAttr("mhlo.sharding", rewriter.getStringAttr(shardConfig));
+    attr.push_back(c);
+    auto attrRef = ArrayRef<NamedAttribute>(attr);
+    
+    rewriter.replaceOpWithNewOp<stablehlo::CustomCallOp>(op, newResultType, lhs, attrRef);
+    return success();
+  }
+};
+} // namespace
+
 void mlir::torch::torch_to_stablehlo::populateBasicOpPatternsAndLegality(
     TypeConverter &typeConverter, RewritePatternSet &patterns,
     ConversionTarget &target, const TorchToStablehloOptions &options) {
@@ -1719,6 +1763,9 @@ void mlir::torch::torch_to_stablehlo::populateBasicOpPatternsAndLegality(
   patterns.add<ConvertAtenTransposeIntOp>(typeConverter, context);
   target.addIllegalOp<RuntimeAssertOp>();
   patterns.add<ConvertRuntimeAssertOp>(typeConverter, context);
+
+  target.addIllegalOp<OperatorOp>();
+  patterns.add<ConvertOperatorOp>(typeConverter, context);
 
 #define INSERT_UNARY_PATTERN(AtenOp, StablehloOp)                              \
   target.addIllegalOp<AtenOp>();                                               \
